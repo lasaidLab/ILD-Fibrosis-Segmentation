@@ -4,11 +4,6 @@
 
     This system uses data from the ILD database to train a U-net for fibrosis segmentation
 
-    Functions
-    ------------
-    main:
-        Access point to the MSSF-ILD System.
-
 """
 
 __version__ = 1.0
@@ -35,6 +30,7 @@ from sklearn.preprocessing import LabelEncoder
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
 from keras.metrics import MeanIoU
+from keras.models import load_model
 
 
 def nan2zero(result):
@@ -45,7 +41,7 @@ def nan2zero(result):
     return result
 
 
-def data_preprocessing(path_original: list, path_mask: list, size: list) -> Any:
+def data_preprocessing(path_original, path_mask, size):
 
     """
     Adjusts the image files for training and test the implemented U-net.
@@ -141,7 +137,8 @@ def data_preprocessing(path_original: list, path_mask: list, size: list) -> Any:
 def training_U_net(original_train_path: list, mask_train_path: list, n_classes: int, size: list, seed: int) -> Any:
 
     """
-    U-net construction, training and test for semantic segmentation of background, lung tissue and fibrosis.
+    U-net construction, training (70%) and test (30%) for semantic segmentation of background, lung tissue and fibrosis.
+    Then the global performance of the trained U-net is obtained, the best model is saved in "best_result.hdf5"
 
     Parameters
     ------------
@@ -158,8 +155,10 @@ def training_U_net(original_train_path: list, mask_train_path: list, n_classes: 
 
     Returns
     ------------
-
-
+        X_test:
+            Multidimensional array with all CT images for test
+        y_test:
+            Multidimensional array with all masks for test
 
     """
 
@@ -252,7 +251,23 @@ def training_U_net(original_train_path: list, mask_train_path: list, n_classes: 
 
 def test_U_net(X_test1, y_test, n_classes):
 
-    from keras.models import load_model
+    """
+    Loads the trained model obtained from "best_result.hdf5" and then evaluates the performance of each class.
+
+    Parameters
+    ------------
+    X_test:
+        Multidimensional array with all CT images for test
+    y_test:
+        Multidimensional array with all masks for test
+
+    n_classes:
+        Number of classes used for the semantic segmentation
+
+    Parameters
+    ------------
+        Prints the performance of each class on the screen.
+    """
 
     name_model = "best_result.hdf5"
     model = load_model(name_model, compile=False)
@@ -263,8 +278,6 @@ def test_U_net(X_test1, y_test, n_classes):
 
 
     # Using built in keras function
-
-
     IOU_keras = MeanIoU(num_classes=n_classes)
     IOU_keras.update_state(y_test[:, :, :, 0], y_pred_argmax)
     print("Mean IoU =", IOU_keras.result().numpy())
@@ -284,7 +297,7 @@ def test_U_net(X_test1, y_test, n_classes):
     print("IoU for class3 is: ", class3_IoU)
 
 
-def divide_input_data(path_original: str, mask_test_path: str, seed: int) -> Any:
+def divide_input_data(path_original, mask_test_path, seed):
     """
     Takes the input paths, reads all the routes of the relevant files, and divides them into training and validation.
     The division takes 80% of the files for training and 20% for validation.
@@ -403,5 +416,5 @@ if __name__ == '__main__':
     x_test, y_test = training_U_net(train_paths_original, train_paths_mask, n_classes, size, seed)
     test_U_net(x_test, y_test, n_classes)
 
-    interpolation_images.interpolate_dicom(val_paths_original, val_paths_mask, size)
+    validation.validate_performance(val_paths_original, val_paths_mask, size, n_classes)
 
