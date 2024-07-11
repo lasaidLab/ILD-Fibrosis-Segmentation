@@ -1,17 +1,20 @@
-# https://youtu.be/XyX5HNuv-xE
+
 """
-Author: Dr. Sreenivas Bhattiprolu
+    Multiclass Semantic Segmentation of Fibrosis in ILD (MSSF-ILD)
 
-Multiclass semantic segmentation using U-Net
+    This system uses data from the ILD database to train a U-net for fibrosis segmentation
 
-Including segmenting large images by dividing them into smaller patches
-and stiching them back
+    Functions
+    ------------
+    main:
+        Access point to the MSSF-ILD System.
 
-To annotate images and generate labels, you can use APEER (for free):
-www.apeer.com
 """
 
-# from simple_multi_unet_model import multi_unet_model  # Uses softmax
+__version__ = 1.0
+__maintainer__ = "Natanael Hernández Vázquez"
+__status__ = "Finished"
+__date__ = "10-06-2024"
 
 import os
 import interpolation_images
@@ -27,6 +30,11 @@ from matplotlib import pyplot as plt
 import pydicom as pd
 import random
 from data_augmentation import lung_data_generator
+from sklearn.utils import class_weight
+from sklearn.preprocessing import LabelEncoder
+from tensorflow.keras.utils import to_categorical
+from sklearn.model_selection import train_test_split
+from keras.metrics import MeanIoU
 
 
 def nan2zero(result):
@@ -37,19 +45,38 @@ def nan2zero(result):
     return result
 
 
-def generate_sample_weights(training_data, class_weights):
-    # replaces values for up to 3 classes with the values from class_weights#
-    sample_weights = [np.where(y == 0, class_weights[0],
-                               np.where(y == 1, class_weights[1],
-                                        np.where(y == 2, class_weights[2], y))) for y in training_data]
-                                                 #np.where(y == 3, class_weights[3], y)))) for y in training_data]
-    return np.asarray(sample_weights)
+def data_preprocessing(path_original: list, path_mask: list, size: list) -> Any:
 
+    """
+    Adjusts the image files for training and test the implemented U-net.
+    First, it reads and loads each CT image and mask, applies windowing to the CT images, and then normalizes
+    the intensities.
 
-def data_split(path_original, path_mask, size):
+    Parameters
+    ----------
+    path_original:
+        Path of the CT image
+    path_mask:
+        Path of the mask
+    size:
+        New image size for resizing 
+        
+    Returns
+    ----------
+        train_images:
+            Multidimensional array with all the preprocessed images
+        train_masks_input
+            Multidimensional array with all the corresponding preprocessed masks 
+        train_masks_reshaped_encoded
+            Multidimensional list with all the corresponding preprocessed masks
+
+    """
+
     SIZE_X, SIZE_Y = size
 
     train_images = []
+
+    # Image windowing by HU (Hounsfield Units): -1000 HU to 200 HU
 
     for img_path in path_original:
         ds = pd.dcmread(img_path)
@@ -95,63 +122,50 @@ def data_split(path_original, path_mask, size):
 
         train_mask.append(mask)
 
-    print(fibrosis_mask_index)
     # Convert list to array for machine learning processing
     train_masks = np.array(train_mask)
 
-    print("El numero de imágenes con etiqueta otros es: ", count_images)
-
     train_images = train_images[fibrosis_mask_index, :, :, :]
     train_masks = train_masks[fibrosis_mask_index, :, :]
-
-    ###############################################
-    # Encode labels... but multi dim array so need to flatten, encode and reshape
-    from sklearn.preprocessing import LabelEncoder
 
     labelencoder = LabelEncoder()
     n, h, w = train_masks.shape
     train_masks_reshaped = train_masks.reshape(-1, 1)
     train_masks_reshaped_encoded = labelencoder.fit_transform(train_masks_reshaped)
     train_masks_encoded_original_shape = train_masks_reshaped_encoded.reshape(n, h, w)
-
-    #################################################
-    # train_images = np.expand_dims(train_images, axis=3)
-    # train_images = normalize(train_images, axis=1)
-
     train_masks_input = np.expand_dims(train_masks_encoded_original_shape, axis=3)
 
     return train_images, train_masks_input, train_masks_reshaped_encoded
 
 
-def training_U_net(original_train_path, mask_train_path, n_classes, size, seed):
+def training_U_net(original_train_path: list, mask_train_path: list, n_classes: int, size: list, seed: int) -> Any:
 
-    X_train, y_train, train_mask_reshaped_encoded = data_split(original_train_path, mask_train_path, size)
-    #X_test, y_test, _ = data_split(original_test_path, mask_test_path)
+    """
+    U-net construction, training and test for semantic segmentation of background, lung tissue and fibrosis.
 
-    from sklearn.model_selection import train_test_split
+    Parameters
+    ------------
+    original_train_path:
+        Original training images paths
+    mask_train_path:
+        Original training mask paths
+    n_classes:
+        Number of classes used for the semantic segmentation
+    size:
+        Size of the images used for training and test
+    seed:
+        Defines the main seed used to generate the random numbers in each division.
 
+    Returns
+    ------------
+
+
+
+    """
+
+    X_train, y_train, train_mask_reshaped_encoded = data_preprocessing(original_train_path, mask_train_path, size)
     X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, test_size=.30, random_state=seed)
-
     X_train, y_train = lung_data_generator(X_train, y_train, seed)
-    #X_test, y_test = lung_data_generator(X_test, y_test, seed)
-
-    print("El número de imágenes de entrenamiento es: ", len(X_train))
-    print("El número de imágenes de prueba es: ", len(X_test))
-
-    print("Class values in y_train are ... ", np.unique(y_train))
-    print("Class values in y_test are ... ", np.unique(y_test))
-
-    """a, b = [77, 87]
-    new_image_range = [a+11, b+11]
-    X_test = X_test[range(a, b), :, :, :]
-    y_test = y_test[range(a, b), :, :, :]
-    
-    print('Siguiente set: ', new_image_range)"""
-    # Further split training data t a smaller subset for quick testing of models
-    #_, X_test, _, y_test = train_test_split(X_test, y_test, test_size=0.2, random_state=0)
-
-
-    from tensorflow.keras.utils import to_categorical
 
     train_masks_cat = to_categorical(y_train, num_classes=n_classes)
     y_train_cat = train_masks_cat.reshape((y_train.shape[0], y_train.shape[1], y_train.shape[2], n_classes))
@@ -159,22 +173,10 @@ def training_U_net(original_train_path, mask_train_path, n_classes, size, seed):
     test_masks_cat = to_categorical(y_test, num_classes=n_classes)
     y_test_cat = test_masks_cat.reshape((y_test.shape[0], y_test.shape[1], y_test.shape[2], n_classes))
 
-    ###############################################################
-
-    IMG_HEIGHT = X_train.shape[1]
-    IMG_WIDTH = X_train.shape[2]
-    IMG_CHANNELS = X_train.shape[3]
-
-    ######################################################
-    # Reused parameters in all models
-
     activation = 'softmax'
 
-    LR = 0.0001
-    optim = tf.keras.optimizers.Adam(LR)
-
-
-    from sklearn.utils import class_weight
+    lr = 0.0001
+    optim = tf.keras.optimizers.Adam(lr)
 
     class_weights = class_weight.compute_class_weight(class_weight='balanced',
                                                       classes=np.unique(train_mask_reshaped_encoded),
@@ -183,72 +185,46 @@ def training_U_net(original_train_path, mask_train_path, n_classes, size, seed):
     print("Class weights are...:", class_weights)
 
     class_weights = {i: w for i, w in enumerate(class_weights)}
-    #class_weights = {0: 0.37583954, 1: 3.10619321, 2: 57.6282969}
 
-    sample_weights = generate_sample_weights(y_train, class_weights)
+    # replaces values for up to 3 classes with the values from class_weights#
+    sample_weights = [np.where(y == 0, class_weights[0],
+                               np.where(y == 1, class_weights[1],
+                                        np.where(y == 2, class_weights[2], y))) for y in y_train]
 
-    ##0.38095213  3.16857783 16.8352328
+    sample_weights = np.asarray(sample_weights)
 
-    # Segmentation models losses can be combined together by '+' and scaled by integer or float factor
-    # set class weights for dice_loss (car: 1.; pedestrian: 2.; background: 0.5;)
-    dice_loss = sm.losses.DiceLoss(class_weights=[0.38095213, 3.16857783, 57.6282969])
+    dice_loss = sm.losses.DiceLoss(class_weights=class_weights)
     focal_loss = sm.losses.CategoricalFocalLoss()
     total_loss = dice_loss + 2*focal_loss
 
-    # actulally total_loss can be imported directly from library, above example just show you how to manipulate with losses
-    # total_loss = sm.losses.binary_focal_dice_loss # or sm.losses.categorical_focal_dice_loss
-
     metrics = [sm.metrics.IOUScore(threshold=0.5), sm.metrics.FScore(threshold=0.5)]
 
-    ########################################################################
-    ###Model 1
+    backbone = 'vgg16'
 
-    #BACKBONE = 'resnet34'
-    #BACKBONE = 'inceptionv3'
-    BACKBONE = 'vgg16'
+    preprocess_input = sm.get_preprocessing(backbone)
 
-    preprocess_input = sm.get_preprocessing(BACKBONE)
+    X_train = preprocess_input(X_train)
+    X_test = preprocess_input(X_test)
 
-    # preprocess input
-    X_train1 = preprocess_input(X_train)
-    X_test1 = preprocess_input(X_test)
+    model = sm.Unet(backbone, encoder_weights='imagenet', classes=n_classes, activation=activation)
 
-
-    #################### Parar ###########################
-    # define model
-    model = sm.Unet(BACKBONE, encoder_weights='imagenet', classes=n_classes, activation=activation)
-
-    # compile keras model with defined optimizer, loss and metrics
     model.compile(optim, total_loss, metrics=metrics)
-
-    # model1.compile(optimizer='adam', loss='categorical_crossentropy', metrics=metrics)
 
     print(model.summary())
 
     callbacks = [
-        #tf.keras.callbacks.EarlyStopping(patience=10, monitor='val_loss'),
         tf.keras.callbacks.ModelCheckpoint('best_result.hdf5', verbose=1, save_best_only=True)
     ]
 
-    history = model.fit(X_train1,
+    history = model.fit(X_train,
                         y_train_cat,
                         batch_size=1,
                         epochs=100,
                         verbose=1,
-                        validation_data=(X_test1, y_test_cat),
+                        validation_data=(X_test, y_test_cat),
                         sample_weight=sample_weights,
                         callbacks=callbacks)
 
-    model.save('inceptionv3_backbone_50epochs.hdf5')
-    ############################################################
-
-    # model.save('sandstone_50_epochs_catXentropy_acc_with_weights.hdf5')
-    ############################################################
-    # Evaluate the model
-    # evaluate model
-
-    ###
-    # plot the training and validation accuracy and loss at each epoch
     loss = history.history['loss']
     val_loss = history.history['val_loss']
     epochs = range(1, len(loss) + 1)
@@ -269,9 +245,9 @@ def training_U_net(original_train_path, mask_train_path, n_classes, size, seed):
     plt.xlabel('Epochs')
     plt.ylabel('IoU')
     plt.legend()
-    plt.show()#"""
+    plt.show()
 
-    return X_test1, y_test
+    return X_test, y_test
 
 
 def test_U_net(X_test1, y_test, n_classes):
@@ -280,17 +256,14 @@ def test_U_net(X_test1, y_test, n_classes):
 
     name_model = "best_result.hdf5"
     model = load_model(name_model, compile=False)
-    #name_model = 'data_augmentation/tested_in_estudios_fibrosis/pulmon0.8838_fibrosis0.4876_weights.hdf5'
-    # model.load_weights('sandstone_50_epochs_catXentropy_acc_with_weights.hdf5')
 
     # IOU
     y_pred = model.predict(X_test1)
     y_pred_argmax = np.argmax(y_pred, axis=3)
 
-    ##################################################
 
     # Using built in keras function
-    from keras.metrics import MeanIoU
+
 
     IOU_keras = MeanIoU(num_classes=n_classes)
     IOU_keras.update_state(y_test[:, :, :, 0], y_pred_argmax)
@@ -311,7 +284,34 @@ def test_U_net(X_test1, y_test, n_classes):
     print("IoU for class3 is: ", class3_IoU)
 
 
-def divide_input_data(path_original, mask_test_path, seed):
+def divide_input_data(path_original: str, mask_test_path: str, seed: int) -> Any:
+    """
+    Takes the input paths, reads all the routes of the relevant files, and divides them into training and validation.
+    The division takes 80% of the files for training and 20% for validation.
+
+    Parameters
+    ------------
+    path_original:
+        Defines the path where the raw thorax CT DICOM files are saved in studies.
+    mask_test_path:
+        Defines the path where the DICOM masks are saved. These masks contain the gold standard for training.
+        The annotation intensities are: 0 for background, 1 for lung tissue, and 2 for fibrosis.
+    seed:
+        Defines the main seed used to generate the random numbers in each division.
+
+    Return
+    ------------
+    list:
+        complete_train_paths_original:
+            Original training images paths
+        complete_train_paths_mask:
+            Original training mask paths
+        complete_val_paths_original:
+            Original validation images paths
+        complete_val_paths_mask:
+            Original training mask paths
+
+    """
 
     folders = {}
 
@@ -334,7 +334,7 @@ def divide_input_data(path_original, mask_test_path, seed):
     no_folders = len(key_folders)
     val_samples = round(no_folders * 0.2)
     random.Random(seed).shuffle(key_folders)
-    train_paths = key_folders[:-val_samples] # se modifico, esto estaba originalmente [:-val_samples]
+    train_paths = key_folders[:-val_samples]
     val_paths = key_folders[-val_samples:]
 
     complete_train_paths_original = []
@@ -367,22 +367,41 @@ def divide_input_data(path_original, mask_test_path, seed):
 
 
 if __name__ == '__main__':
+    """
+    It controls all the system flow and defines the initial parameters for the experiments.
+
+    Main parameters:
+    ------------
+    size:
+        Defines the image size for training, testing, and validation.
+
+    original_test_path:
+        Defines the path where the raw thorax CT DICOM files are saved in studies.
+
+    mask_test_path:
+        Defines the path where the DICOM masks are saved. These masks contain the gold standard for training.
+        The annotation intensities are: 0 for background, 1 for lung tissue, and 2 for fibrosis.
+
+    n_classes:
+        Defines the classes used for semantic segmentation. In this case, it is always 3.
+    """
+
     # Resizing images, if needed
     SIZE_X = 256
     SIZE_Y = 256
+
+    original_test_path = "/original"
+    mask_test_path = "/mask"
+
     size = [SIZE_X, SIZE_Y]
     n_classes = 3  # Number of classes for segmentation
     seed = random.randint(0, 2000)
-    seed = 631
-    print('La semilla para esta corrida es: {}'.format(seed))
 
-    original_test_path = "D:/Bases_de_datos/ILD_DB/ILD_DB_modificada/ILD_datasets/ILD_fibrosis_complement/original"
-    mask_test_path = "D:/Bases_de_datos/ILD_DB/ILD_DB_modificada/ILD_datasets/ILD_fibrosis_complement/mask"
+    train_paths_original, train_paths_mask, val_paths_original, val_paths_mask = divide_input_data(original_test_path,
+                                                                                                   mask_test_path, seed)
 
-    train_paths_original, train_paths_mask, val_paths_original, val_paths_mask = divide_input_data(original_test_path, mask_test_path, seed)
-
-    #x_test, y_test = training_U_net(train_paths_original, train_paths_mask, n_classes, size, seed)
-    #test_U_net(x_test, y_test, n_classes)
+    x_test, y_test = training_U_net(train_paths_original, train_paths_mask, n_classes, size, seed)
+    test_U_net(x_test, y_test, n_classes)
 
     interpolation_images.interpolate_dicom(val_paths_original, val_paths_mask, size)
 

@@ -35,6 +35,3 @@ for directory_path in glob.glob(path):
             image_name = os.path.join(new_folder_name, 'CT_' + str(index) + '.jpg')
             cv2.imwrite(image_name, each_image_norm)
             index += 1
-
-
-

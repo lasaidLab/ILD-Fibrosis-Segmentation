@@ -3,6 +3,27 @@ import numpy as np
 
 
 def lung_data_generator(X_train, y_train, seed):
+
+    """
+    Data augmentation of images used for training
+
+    Parameters
+    ----------
+    X_train:
+        Multidimensional array with all CT images for training
+    y_train:
+        Multidimensional array with all masks for training
+    seed:
+        Defines the main seed used to generate the random numbers.
+
+    Returns
+    ----------
+    new_Xtrain:
+        Multidimensional array with all augmented CT images for training
+    new_ytrain
+        Multidimensional array with all augmented masks for training
+    """
+
     img_data_gen_args = dict(rotation_range=45,
                              width_shift_range=0.3,
                              height_shift_range=0.3,
