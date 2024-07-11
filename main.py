@@ -6,7 +6,6 @@
 
 """
 
-
 __version__ = 1.0
 __maintainer__ = "Natanael Hernández Vázquez"
 __status__ = "Finished"
