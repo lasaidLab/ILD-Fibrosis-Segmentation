@@ -4,6 +4,7 @@ import glob
 import os
 import cv2
 
+
 path = 'mascaras_pred'
 
 image_dict = {}

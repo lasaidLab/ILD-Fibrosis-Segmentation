@@ -2,6 +2,7 @@ from keras.preprocessing.image import ImageDataGenerator
 import numpy as np
 
 
+
 def lung_data_generator(X_train, y_train, seed):
 
     """

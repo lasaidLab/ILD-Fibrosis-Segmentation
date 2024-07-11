@@ -15,6 +15,7 @@ from keras.models import load_model
 from sklearn.preprocessing import LabelEncoder
 
 
+
 def IoU_comparation(n_classes, y_test, y_pred_argmax, comparation_type):
 
     """
